@@ -22,3 +22,15 @@ variable "google_credentials" {
   description = "Contents of the service account JSON file"
   sensitive   = true
 }
+
+variable "key_ring_name" {
+  description = "Name of the KMS key ring"
+  type        = string
+  default     = "ruachiel-infra-keyring"
+}
+
+variable "crypto_key_name" {
+  description = "Name of the KMS crypto key"
+  type        = string
+  default     = "ruachiel-infra-key"
+}

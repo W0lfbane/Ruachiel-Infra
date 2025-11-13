@@ -1,0 +1,104 @@
+name: Terraform Deployment
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform-deploy.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  terraform-apply:
+    runs-on: ubuntu-latest
+    env:
+      TFVARS: "./terraform/terraform.tfvars"
+      PROJECT_ID: "striped-fulcrum-472606-p9"
+
+    steps:
+      # Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Google Auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: "${{ secrets.GCP_SA_KEY }}"
+
+      - name: Setup gcloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      # Check if terraform.tfstate.sops exists
+      - name: Check for terraform.tfstate.sops
+        id: check_state
+        run: |
+          if [ -f "terraform/terraform.tfstate.sops" ]; then
+            echo "state_sops_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "state_sops_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      # Install sops only if terraform.tfstate.sops exists
+      - name: Install sops
+        if: steps.check_state.outputs.state_sops_exists == 'true'
+        run: |
+          curl -sSL -o /usr/local/bin/sops https://github.com/getsops/sops/releases/download/v3.10.2/sops-v3.10.2.linux.amd64
+          chmod +x /usr/local/bin/sops
+
+      # Decrypt terraform.tfstate.sops if it exists
+      - name: Decrypt terraform.tfstate
+        if: steps.check_state.outputs.state_sops_exists == 'true'
+        run: sops -d ./terraform/terraform.tfstate.sops > ./terraform/terraform.tfstate
+
+      - name: Decrypt Terraform variables
+        run: sops -d terraform/terraform.tfvars.sops > terraform/terraform.tfvars
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Terraform Plan
+        working-directory: ./terraform
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          terraform init -input=false -no-color
+          terraform plan -input=false -lock=false -no-color
+
+      - name: Terraform Apply
+        working-directory: ./terraform
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          terraform init -input=false -no-color
+          terraform apply -auto-approve -input=false -lock=false -no-color
+
+      - name: Re-encrypt Terraform files
+        run: ./scripts/encrypt_terraform_sops.sh
+
+      - name: Commit and Push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Check if there are changes to commit
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          # Commit changes
+          git add .
+          git commit -m "Update Terraform state post-deploy [ci-automated]"
+
+          # Push back
+          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }} HEAD:${{ github.ref_name }}
