@@ -4,7 +4,7 @@ This repository contains shared infrastructure resources for the Ruachiel projec
 
 ## Resources Managed
 
-- **Artifact Registry**: Shared Docker repository (`ruachiel-repo`) with cleanup policies for:
+- **Artifact Registry**: Shared Docker repository (`ruachiel-docker-repo`) with cleanup policies for:
   - `core-api` packages
   - `discord-bot` packages
 
