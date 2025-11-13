@@ -8,7 +8,7 @@ resource "google_artifact_registry_repository" "docker_repo" {
   provider      = google
   project       = var.project_id
   location      = var.artifact_registry_location
-  repository_id = "ruachiel-repo"
+  repository_id = "ruachiel-docker-repo"
   format        = "DOCKER"
   description   = "Docker images for Ruachiel services (core-api, discord-bot)"
 
